@@ -1,16 +1,26 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Request,  status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import Base, engine, get_db
+from app.dependencies import get_current_user
 from app.geofence import distance_metres
-from app.models import AttendanceSession, OfficeLocation, Organization, OrganizationMembership, User
+from app.models import (
+    AttendanceSession,
+    OfficeLocation,
+    Organization,
+    OrganizationMembership,
+    User,
+)
+from app.rate_limit import limiter
 from app.schemas import (
     ActiveSessionResponse,
     ClockInRequest,
@@ -18,15 +28,13 @@ from app.schemas import (
     ClockOutRequest,
     ClockOutResponse,
     LoginRequest,
+    MembershipRequest,
+    MembershipResponse,
+    RegisterRequest,
     TokenResponse,
+    UserResponse,
 )
 from app.security import create_access_token, hash_password, verify_password
-from app.dependencies import get_current_user
-from sqlalchemy.exc import IntegrityError
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-
-from app.rate_limit import limiter
 
 
 @asynccontextmanager
@@ -74,6 +82,61 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
 
     token = create_access_token(user.id)
     return TokenResponse(access_token=token)
+
+@app.post("/api/v1/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
+def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
+    existing = db.scalar(select(User).where(User.email == payload.email))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail={"code": "EMAIL_ALREADY_REGISTERED"})
+
+    user = User(
+        full_name=payload.full_name,
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return UserResponse(id=user.id, full_name=user.full_name, email=user.email)
+
+@app.post("/api/v1/organizations/{organization_id}/memberships", response_model=MembershipResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+def request_membership(
+    request: Request,
+    organization_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MembershipResponse:
+    organization = db.get(Organization, organization_id)
+    if organization is None:
+        raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_NOT_FOUND"})
+
+    existing = db.scalar(
+        select(OrganizationMembership).where(
+            OrganizationMembership.organization_id == organization_id,
+            OrganizationMembership.user_id == current_user.id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail={"code": "MEMBERSHIP_ALREADY_EXISTS"})
+
+    membership = OrganizationMembership(
+        organization_id=organization_id,
+        user_id=current_user.id,
+        role="staff",
+        approval_status="pending",
+    )
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+    return MembershipResponse(
+        id=membership.id,
+        organization_id=membership.organization_id,
+        user_id=membership.user_id,
+        role=membership.role,
+        approval_status=membership.approval_status,
+    )
 
 
 @app.post("/development/seed")
