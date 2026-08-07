@@ -173,6 +173,62 @@ def deactivate_member(
     )
     
     
+@app.patch("/api/v1/organizations/{organization_id}/memberships/{membership_id}/change-role/{role}", response_model=MembershipResponse)
+@limiter.limit("20/minute")
+def change_role(
+    request: Request,
+    organization_id: UUID,
+    membership_id: UUID,
+    role: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MembershipResponse:
+    require_org_admin(db, current_user, organization_id)
+    
+    membership = db.get(OrganizationMembership, membership_id)
+    if membership is None or membership.organization_id != organization_id:
+        raise HTTPException(status_code=404, detail={"code": "MEMBERSHIP_NOT_FOUND"})
+    
+    if role not in ["admin", "staff"]:
+        raise HTTPException(status_code=400, detail={"code" : "INVALID_ROLE"})
+    
+    if membership.user_id == current_user.id and membership.role == "admin" and role != "admin":
+        raise HTTPException(status_code=403, detail={"code" : "SELF_DEMOTION"})
+    
+    admins = db.scalars(
+        select(OrganizationMembership).where(
+            OrganizationMembership.organization_id == organization_id,
+            OrganizationMembership.role == "admin",
+            OrganizationMembership.approval_status == "active",
+        )
+    ).all()    
+    
+    admin_count = len(admins)
+    
+    if admin_count < 2 and role == "staff" and membership.role == "admin":
+        raise HTTPException(status_code=403, detail={"code" : "NOT_ENOUGH_NUMBER_OF_ADMINS"})
+    
+    
+    membership.role = role
+    
+
+    
+    
+
+    db.commit()
+    db.refresh(membership)
+    
+    return MembershipResponse(
+            id=membership.id,
+            organization_id=membership.organization_id,
+            user_id=membership.user_id,
+            role=membership.role,
+            approval_status=membership.approval_status,
+            approved_by=membership.approved_by,
+            approved_at=membership.approved_at,
+    )
+    
+    
 @app.patch("/api/v1/organizations/{organization_id}/memberships/{membership_id}/approve", response_model=MembershipResponse)
 @limiter.limit("20/minute")
 def approve_membership(
