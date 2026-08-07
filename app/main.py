@@ -45,10 +45,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.exception_handler(Exception)
 async def debug_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=500,
-        content={"error": str(exc), "traceback": traceback.format_exc().splitlines()},
-    )
+    if get_settings().app_env == "development":
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(exc), "traceback": traceback.format_exc().splitlines()},
+        )
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
 
