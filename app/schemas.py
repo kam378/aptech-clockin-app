@@ -64,6 +64,8 @@ class MembershipResponse(BaseModel):
     user_id: UUID
     role: str
     approval_status: str
+    approved_by: UUID | None = None
+    approved_at: datetime | None = None
     
 class TokenResponse(BaseModel):
     access_token: str

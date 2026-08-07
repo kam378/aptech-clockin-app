@@ -37,6 +37,8 @@ class OrganizationMembership(Base):
     role: Mapped[str] = mapped_column(String(30), nullable=False, default="staff")
     approval_status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
     joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OfficeLocation(Base):
@@ -68,3 +70,4 @@ class AttendanceSession(Base):
     office_location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("office_locations.id"), nullable=False)
     clocked_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     clocked_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
