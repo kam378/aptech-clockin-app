@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request,  status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,10 @@ from app.schemas import (
 from app.security import create_access_token, hash_password, verify_password
 from app.dependencies import get_current_user
 from sqlalchemy.exc import IntegrityError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from app.rate_limit import limiter
 
 
 @asynccontextmanager
@@ -35,6 +39,8 @@ import traceback
 from fastapi.responses import JSONResponse
 
 app = FastAPI(title="Clock-In API", version="0.1.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.exception_handler(Exception)
@@ -51,7 +57,8 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     user = db.scalar(select(User).where(User.email == payload.email))
 
     invalid_credentials = HTTPException(status_code=401, detail={"code": "INVALID_CREDENTIALS"})
@@ -130,7 +137,9 @@ def get_owned_membership_and_office(
 
 
 @app.post("/api/v1/attendance/clock-in", response_model=ClockInResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 def clock_in(
+    request: Request,
     payload: ClockInRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -177,7 +186,9 @@ def clock_in(
 
 
 @app.get("/api/v1/attendance/active-session", response_model=ActiveSessionResponse)
+@limiter.limit("30/minute")
 def get_active_session(
+    request: Request,
     membership_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -205,7 +216,9 @@ def get_active_session(
 
 
 @app.post("/api/v1/attendance/clock-out", response_model=ClockOutResponse)
+@limiter.limit("20/minute")
 def clock_out(
+    request: Request,
     payload: ClockOutRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
