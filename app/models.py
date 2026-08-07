@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, String, Uuid, UniqueConstrai
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Uuid, UniqueConstraint, func, text
 
 
 class Organization(Base):
@@ -52,6 +53,14 @@ class OfficeLocation(Base):
 
 class AttendanceSession(Base):
     __tablename__ = "attendance_sessions"
+    __table_args__ = (
+        Index(
+            "uq_one_open_session_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("clocked_out_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), nullable=False, index=True)

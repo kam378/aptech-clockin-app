@@ -22,6 +22,7 @@ from app.schemas import (
 )
 from app.security import create_access_token, hash_password, verify_password
 from app.dependencies import get_current_user
+from sqlalchemy.exc import IntegrityError
 
 
 @asynccontextmanager
@@ -166,7 +167,11 @@ def clock_in(
         office_location_id=office.id,
     )
     db.add(session)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={"code": "OPEN_SESSION_EXISTS"})
     db.refresh(session)
     return ClockInResponse(session_id=session.id, status="clocked_in", clocked_in_at=session.clocked_in_at, distance_m=round(distance_m, 2))
 
