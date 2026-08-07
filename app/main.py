@@ -138,6 +138,41 @@ def request_membership(
         approval_status=membership.approval_status,
     )
     
+@app.patch("/api/v1/organizations/{organization_id}/memberships/{membership_id}/deactivate", response_model=MembershipResponse)
+@limiter.limit("20/minute")
+def deactivate_member(
+    request: Request,
+    organization_id: UUID,
+    membership_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MembershipResponse:
+    require_org_admin(db, current_user, organization_id)
+    
+    membership = db.get(OrganizationMembership, membership_id)
+    if membership is None or membership.organization_id != organization_id:
+        raise HTTPException(status_code=404, detail={"code": "MEMBERSHIP_NOT_FOUND"})
+    
+    if membership.role == "admin":
+        raise HTTPException(status_code=403, detail={"code": "CANNOT_DEACTIVATE_ADMIN"})
+    
+    membership.approval_status = "suspended"
+    membership.approved_by = current_user.id
+    membership.approved_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(membership)
+    
+    return MembershipResponse(
+            id=membership.id,
+            organization_id=membership.organization_id,
+            user_id=membership.user_id,
+            role=membership.role,
+            approval_status=membership.approval_status,
+            approved_by=membership.approved_by,
+            approved_at=membership.approved_at,
+    )
+    
+    
 @app.patch("/api/v1/organizations/{organization_id}/memberships/{membership_id}/approve", response_model=MembershipResponse)
 @limiter.limit("20/minute")
 def approve_membership(
@@ -377,4 +412,3 @@ def clock_out(
         distance_m=round(distance_m, 2),
         duration_minutes=duration_minutes,
     )
-

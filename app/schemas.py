@@ -67,6 +67,14 @@ class MembershipResponse(BaseModel):
     approved_by: UUID | None = None
     approved_at: datetime | None = None
     
+# class DeactivateResponse(BaseModel):
+#     id: UUID
+#     organization_id: UUID
+#     user_id: UUID
+#     role: str
+#     deactivated_by: UUID | None = None
+#     deactivate_at: datetime | None = None
+    
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
