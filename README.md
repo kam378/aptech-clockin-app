@@ -25,9 +25,9 @@ Location is used only at the moment a staff member requests an attendance action
 
 4. Open `http://127.0.0.1:8000/docs`. The starter exposes `GET /health`, `POST /development/seed`, and `POST /api/v1/attendance/clock-in`.
 
-Call `POST /development/seed` first. It returns the demo staff and office IDs needed for a clock-in request. The demo office is at latitude `6.5244`, longitude `3.3792`, with a 150-metre radius. Submit a fresh timestamp in `location.captured_at` and an accuracy no worse than 50 metres.
+Call `POST /development/seed` first. It returns the demo membership and office IDs needed for a clock-in request. The demo office is at latitude `6.5244`, longitude `3.3792`, with a 150-metre radius. Submit a fresh timestamp in `location.captured_at` and an accuracy no worse than 50 metres.
 
-This is a development milestone, not a deployable authentication system. The clock-in request temporarily accepts `staff_member_id` in its JSON body so the geofence can be tested. Replace it with the authenticated user from a JWT before exposing the API outside local development.
+This is a development milestone, not a deployable authentication system. The clock-in request temporarily accepts `membership_id` in its JSON body so the geofence can be tested. Replace it with the authenticated user and active membership from a JWT before exposing the API outside local development.
 
 ## How It Works
 
