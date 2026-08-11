@@ -12,7 +12,7 @@ class Organization(Base):
     __tablename__ = "organizations"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Africa/Lagos")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
 
