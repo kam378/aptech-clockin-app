@@ -31,6 +31,7 @@ from app.schemas import (
     MembershipRequest,
     MembershipResponse,
     RegisterRequest,
+    RegisterResponse,
     TokenResponse,
     UserResponse,
 )
@@ -83,9 +84,13 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
     token = create_access_token(user.id)
     return TokenResponse(access_token=token)
 
-@app.post("/api/v1/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
-def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
+def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+    organization = db.scalar(select(Organization).where(Organization.name == payload.organization_name))
+    if organization is None:
+        raise HTTPException(status_code=404, detail={"code": "ORGANIZATION_NOT_FOUND"})
+
     existing = db.scalar(select(User).where(User.email == payload.email))
     if existing is not None:
         raise HTTPException(status_code=409, detail={"code": "EMAIL_ALREADY_REGISTERED"})
@@ -98,7 +103,29 @@ def register(request: Request, payload: RegisterRequest, db: Session = Depends(g
     db.add(user)
     db.commit()
     db.refresh(user)
-    return UserResponse(id=user.id, full_name=user.full_name, email=user.email)
+
+    membership = OrganizationMembership(
+        organization_id=organization.id,
+        user_id=user.id,
+        role="staff",
+        approval_status="pending",
+    )
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+
+    return RegisterResponse(
+        user=UserResponse(id=user.id, full_name=user.full_name, email=user.email),
+        membership=MembershipResponse(
+            id=membership.id,
+            organization_id=membership.organization_id,
+            user_id=membership.user_id,
+            role=membership.role,
+            approval_status=membership.approval_status,
+            approved_by=membership.approved_by,
+            approved_at=membership.approved_at,
+        ),
+    )
 
 @app.post("/api/v1/organizations/{organization_id}/memberships", response_model=MembershipResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")

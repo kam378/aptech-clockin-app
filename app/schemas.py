@@ -45,6 +45,11 @@ class RegisterRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
     email: EmailStr
     password: str = Field(min_length=8)
+    organization_name: str = Field(min_length=1, max_length=200)
+
+class RegisterResponse(BaseModel):
+    user: UserResponse
+    membership: MembershipResponse
 
 class UserResponse(BaseModel):
     id: UUID
