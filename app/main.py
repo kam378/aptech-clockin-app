@@ -34,6 +34,7 @@ from app.schemas import (
     RegisterResponse,
     TokenResponse,
     UserResponse,
+    MeResponse,
 )
 from app.security import create_access_token, hash_password, verify_password
 
@@ -83,6 +84,44 @@ def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)
 
     token = create_access_token(user.id)
     return TokenResponse(access_token=token)
+
+@app.get("/api/v1/auth/me", response_model=MeResponse)
+@limiter.limit("20/minute")
+def me(
+    request: Request, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ) -> MeResponse:
+
+    selected_mem = select(OrganizationMembership).where(
+        OrganizationMembership.user_id == current_user.id
+    ) # This throws an error if returned bcs it's not a membership response type?#
+
+    # I decided to add all the Mem as a membershipResponse and append them to a list
+
+    memberships = []
+    for mem in db.scalars(selected_mem).all():
+        memberships.append(
+            MembershipResponse(
+                id = mem.id,
+                organization_id=mem.organization_id,
+                user_id=mem.user_id,
+                role=mem.role,
+                approval_status=mem.approval_status,
+                approved_by=mem.approved_by,
+                approved_at=mem.approved_at,
+            )
+        )
+    
+
+    return MeResponse(
+        user = UserResponse(id=current_user.id, full_name=current_user.full_name, email=current_user.email),
+        memberships=memberships, #then return the list
+    )
+
+
+
+    
 
 @app.post("/api/v1/auth/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
