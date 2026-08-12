@@ -39,6 +39,8 @@ class OrganizationMembership(Base):
     joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    device_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    device_flagged: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 class OfficeLocation(Base):
     __tablename__ = "office_locations"

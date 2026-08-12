@@ -13,6 +13,7 @@ class LocationSample(BaseModel):
 class ClockInRequest(BaseModel):
     membership_id: UUID
     office_location_id: UUID
+    device_id: str = Field(min_length=1, max_length=255)
     location: LocationSample
 
 class ClockInResponse(BaseModel):
@@ -25,6 +26,7 @@ class ClockOutRequest(BaseModel):
     membership_id: UUID
     office_location_id: UUID
     location: LocationSample
+    device_id: str = Field(min_length=1, max_length=255)
 
 class ClockOutResponse(BaseModel):
     session_id: UUID

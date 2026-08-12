@@ -293,6 +293,39 @@ def change_role(
             approved_by=membership.approved_by,
             approved_at=membership.approved_at,
     )
+
+# PATCH /api/v1/organizations/{organization_id}/memberships/{membership_id}/relink-device
+@app.patch("/api/v1/organizations/{organization_id}/memberships/{membership_id}/relink-device", response_model=MembershipResponse)
+@limiter.limit("20/minute")
+def relink_device(
+    request: Request,
+    organization_id: UUID,
+    membership_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ) -> MembershipResponse:
+    require_org_admin(db, current_user, organization_id)
+
+    membership = db.get(OrganizationMembership, membership_id)
+    if membership is None or membership.organization_id != organization_id:
+        raise HTTPException(status_code=404, detail={"code": "MEMBERSHIP_NOT_FOUND"})
+
+    membership.device_id = None
+    membership.device_flagged = False
+    db.commit()
+    db.refresh(membership) 
+    
+    return MembershipResponse(
+        id=membership.id,
+        organization_id=membership.organization_id,
+        user_id=membership.user_id,
+        role=membership.role,
+        approval_status=membership.approval_status,
+        approved_by=membership.approved_by,
+        approved_at=membership.approved_at,
+    )
+
+
     
     
 @app.patch("/api/v1/organizations/{organization_id}/memberships/{membership_id}/approve", response_model=MembershipResponse)
@@ -387,16 +420,14 @@ def seed_development_data(db: Session = Depends(get_db)) -> dict[str, str]:
     return {"membership_id": str(membership.id), "office_location_id": str(office.id)}
 
 def get_owned_membership_and_office(
-    db: Session, current_user: User, membership_id, office_location_id
+    db: Session, current_user: User, membership_id, office_location_id, device_id: str
 ) -> tuple[OrganizationMembership, OfficeLocation]:
-    membership = db.get(OrganizationMembership, membership_id)
+    membership = get_owned_membership(db, current_user, membership_id, device_id)
+
     office = db.get(OfficeLocation, office_location_id)
-    if membership is None or office is None or membership.organization_id != office.organization_id:
+    if office is None or membership.organization_id != office.organization_id:
         raise HTTPException(status_code=404, detail={"code": "OFFICE_OR_MEMBERSHIP_NOT_FOUND"})
-    if membership.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail={"code": "OFFICE_OR_MEMBERSHIP_NOT_FOUND"})
-    if membership.approval_status != "active":
-        raise HTTPException(status_code=403, detail={"code": "MEMBERSHIP_NOT_APPROVED"})
+
     return membership, office
 
 
@@ -409,7 +440,7 @@ def clock_in(
     current_user: User = Depends(get_current_user),
 ) -> ClockInResponse:
     membership, office = get_owned_membership_and_office(
-        db, current_user, payload.membership_id, payload.office_location_id
+        db, current_user, payload.membership_id, payload.office_location_id, payload.device_id
     )
 
     now = datetime.now(timezone.utc)
@@ -454,12 +485,11 @@ def clock_in(
 def get_active_session(
     request: Request,
     membership_id: UUID,
+    device_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ActiveSessionResponse:
-    membership = db.get(OrganizationMembership, membership_id)
-    if membership is None or membership.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail={"code": "MEMBERSHIP_NOT_FOUND"})
+    membership = get_owned_membership(db, current_user, membership_id, device_id)
 
     session = db.scalar(
         select(AttendanceSession).where(
@@ -488,7 +518,7 @@ def clock_out(
     current_user: User = Depends(get_current_user),
 ) -> ClockOutResponse:
     membership, office = get_owned_membership_and_office(
-        db, current_user, payload.membership_id, payload.office_location_id
+        db, current_user, payload.membership_id, payload.office_location_id, payload.device_id
     )
 
     session = db.scalar(
@@ -534,3 +564,24 @@ def clock_out(
         distance_m=round(distance_m, 2),
         duration_minutes=duration_minutes,
     )
+
+def get_owned_membership(
+    db: Session, current_user: User, membership_id, device_id: str
+) -> OrganizationMembership:
+    membership = db.get(OrganizationMembership, membership_id)
+    if membership is None or membership.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail={"code": "OFFICE_OR_MEMBERSHIP_NOT_FOUND"})
+    if membership.approval_status != "active":
+        raise HTTPException(status_code=403, detail={"code": "MEMBERSHIP_NOT_APPROVED"})
+
+    if membership.device_id is None:
+        membership.device_id = device_id
+        db.commit()
+        db.refresh(membership)
+    elif membership.device_id != device_id:
+        membership.device_flagged = True
+        db.commit()
+        raise HTTPException(status_code=403, detail={"code": "DEVICE_MISMATCH"})
+
+    return membership
+
