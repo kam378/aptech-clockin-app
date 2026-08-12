@@ -30,6 +30,8 @@ from app.schemas import (
     LoginRequest,
     MembershipRequest,
     MembershipResponse,
+    OrganizationResponse,
+    OrganizationRequest,
     RegisterRequest,
     RegisterResponse,
     TokenResponse,
@@ -358,6 +360,10 @@ def approve_membership(
         approved_by=membership.approved_by,
         approved_at=membership.approved_at,
     )
+
+def require_platform_admin(current_user: User) -> None:
+    if not current_user.is_platform_admin:
+        raise HTTPException(status_code=403, detail={"code": "NOT_A_PLATFORM_ADMIN"})
     
 def require_org_admin(db: Session, current_user: User, organization_id: UUID) -> OrganizationMembership:
     admin_membership = db.scalar(
@@ -369,6 +375,38 @@ def require_org_admin(db: Session, current_user: User, organization_id: UUID) ->
     if admin_membership is None or admin_membership.approval_status != "active" or admin_membership.role != "admin":
         raise HTTPException(status_code=403, detail={"code": "NOT_AN_ORG_ADMIN"})
     return admin_membership
+
+@app.post("/api/v1/organizations", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
+def create_organization(
+    request: Request,
+    payload: OrganizationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> OrganizationResponse:
+    require_platform_admin(current_user)
+
+    organization = db.scalar(select(Organization).where(Organization.name == payload.name))
+
+    if organization is not None:
+        raise HTTPException(status_code=409, detail={"code": "ORGANIZATION_ALREADY_EXISTS"})
+
+    organization = Organization(
+        name=payload.name,
+        timezone=payload.timezone,
+        status="active" 
+    )
+
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+
+    return OrganizationResponse(
+        id = organization.id,
+        name = organization.name,
+        timezone=organization.timezone,
+        status=organization.status
+    )
 
 
 @app.post("/development/seed")

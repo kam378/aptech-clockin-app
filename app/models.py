@@ -25,6 +25,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    is_platform_admin: Mapped[bool] = mapped_column(nullable=False, default=False)
 
 
 class OrganizationMembership(Base):
@@ -71,4 +72,7 @@ class AttendanceSession(Base):
     office_location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("office_locations.id"), nullable=False)
     clocked_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     clocked_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+
 
